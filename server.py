@@ -168,7 +168,11 @@ def handle_client(ssl_client):
     write_auth = is_write_authorized(ssl_client)
     total_data = bytes()
     log('handle_client')
-    data = ssl_client.recv(RTT_RECV_SIZE)
+    try:
+        data = ssl_client.recv(RTT_RECV_SIZE)
+    except Exception as e:
+        log(e)
+        return True
     data_len = len(data)
     while data is not None and data_len > 0:
         total_data += data
@@ -178,7 +182,10 @@ def handle_client(ssl_client):
             ssl_client.sendall(response.encode(RTT_ENCODING))
             log('client handled with response')
             break
-        data = ssl_client.recv(RTT_RECV_SIZE)
+        try:
+            data = ssl_client.recv(RTT_RECV_SIZE)
+        except Exception as e:
+            log(e)
         data_len = len(data)
     log('client end')
     return data_len < 1
