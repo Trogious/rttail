@@ -169,8 +169,6 @@ def main():
         return
     if is_daemon():
         method_subscribe(ssl_socket)
-        time.sleep(60)
-        main()
     elif is_notify_d():
         method_notify_d(ssl_socket)
     else:
@@ -179,3 +177,7 @@ def main():
 
 if __name__ == '__main__':
     main()
+    if is_daemon():
+        while True:
+            time.sleep(60)
+            main()

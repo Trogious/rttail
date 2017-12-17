@@ -24,6 +24,7 @@ RTT_DB_PASS = os.environ['RTT_DB_PASS']
 RTT_WRITE_ALLOWED_EMAILS = os.environ['RTT_WRITE_ALLOWED_EMAILS'].split(',')
 RTT_RE_VENDOR = re.compile('-[a-z0-9]+\.+torrent$', re.I)
 RTT_RE_VEN_END = re.compile('\.+torrent$', re.I)
+RTT_RE_VENDOR2 = re.compile('-[a-z0-9]+$', re.I)
 RTT_RE_EPISODE = re.compile('(\.S[0-9]{2}E[0-9]{2}\.)|(\.S[0-9]{2}E[0-9]{2}-E?[0-9]{2}\.)', re.I)
 RTT_stderr_lock = Lock()
 RTT_stderr = sys.stderr
@@ -42,6 +43,10 @@ def get_details(t):
     if m is not None:
         vendor = m.group()[1:]
         vendor = RTT_RE_VEN_END.sub('', vendor)
+    else:
+        m = RTT_RE_VENDOR2.search(t)
+        if m is not None:
+            vendor = m.group()[1:]
     m = RTT_RE_EPISODE.search(t)
     if m is not None:
         episode = m.group()[1:-1]
@@ -72,10 +77,11 @@ def get_torrents(n_limit):
     return torrents
 
 
-def get_from_queue(from_timestamp):
+def get_from_queue(from_tstamp):
     conn = psycopg2.connect('dbname=' + RTT_DB_NAME + ' user=' + RTT_DB_USER + ' password=' + RTT_DB_PASS)
     c = conn.cursor()
     c.execute('SELECT torrent,downloaded_at FROM downloaded_queue ORDER BY id')
+    # WHERE CAST(EXTRACT(epoch FROM downloaded_at) AS int) > %s
     torrents = []
     for t in c.fetchall():
         d = get_details(t[0])
@@ -244,7 +250,7 @@ def main():
                 global RTT_notify_d
                 if RTT_notify_d is not None:
                     for c in clients:
-                        log('sendin n to: ' + str(c))
+                        log('sending n to: ' + str(c))
                         c.sendall(RTT_notify_d.encode(RTT_ENCODING))
                     RTT_notify_d = None
         for fd_error in fds_error:
