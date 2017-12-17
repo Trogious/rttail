@@ -17,6 +17,7 @@ RTT_PORT = int(os.environ['RTT_PORT'])
 RTT_CERT_FILE = os.environ['RTT_CERT_FILE']
 RTT_CERT_KEY = os.environ['RTT_CERT_KEY']
 RTT_CHDIR = os.environ['RTT_CHDIR']
+RTT_LATEST_FILE = os.environ['RTT_LATEST_FILE']
 RTT_stderr_lock = Lock()
 RTT_stderr = sys.stderr
 
@@ -61,6 +62,24 @@ def log(log_item):
         RTT_stderr.flush()
 
 
+def get_latest_tstamp():
+    latest_tstamp = 0
+    try:
+        with open(RTT_LATEST_FILE, 'rb') as f:
+            latest_tstamp = int(f.read().decode(RTT_ENCODING))
+    except Exception as e:
+            log(e)
+    return latest_tstamp
+
+
+def update_latest_tstamp(latest_tstamp):
+    try:
+        with open(RTT_LATEST_FILE, 'wb') as f:
+            f.write(str(latest_tstamp).encode(RTT_ENCODING))
+    except Exception as e:
+        log(e)
+
+
 def process_response(data):
     content_length = None
     data = data.decode(RTT_ENCODING)
@@ -84,7 +103,16 @@ def process_response(data):
                 log(str(t['id']) + ' ' + t['torrent'])
         elif 'notify_d' in result.keys():
             log(result['notify_d'])
-            Downloader(result['notify_d']).start()
+            latest_tstamp = get_latest_tstamp()
+            new_notifications = []
+            for n in result['notify_d']:
+                tstamp = int(n['downloaded_at'])
+                if tstamp > latest_tstamp:
+                    new_notifications.append(n)
+                    latest_tstamp = tstamp
+            update_latest_tstamp(latest_tstamp)
+            if len(new_notifications) > 0:
+                Downloader(new_notifications).start()
     return content_length
 
 
@@ -141,7 +169,7 @@ def main():
         return
     if is_daemon():
         method_subscribe(ssl_socket)
-        time.sleep(1)
+        time.sleep(60)
         main()
     elif is_notify_d():
         method_notify_d(ssl_socket)

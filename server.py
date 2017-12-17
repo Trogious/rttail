@@ -77,7 +77,7 @@ def get_from_queue(from_timestamp):
     c = conn.cursor()
     c.execute('SELECT torrent,downloaded_at FROM downloaded_queue ORDER BY id')
     torrents = []
-    for t in c.fetchall()[::-1]:
+    for t in c.fetchall():
         d = get_details(t[0])
         dt = int(time.mktime(t[1].timetuple()))
         torrents.append({'entry': t[0], 'downloaded_at': dt, 'vendor': d[0], 'season': d[1], 'episodes': d[2]})
