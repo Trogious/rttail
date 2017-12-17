@@ -7,20 +7,21 @@ import sys
 import psycopg2
 import select
 import time
+import os
 from threading import Lock
 
-RTT_HOST = '0.0.0.0'
-RTT_PORT = 13014
 RTT_ENCODING = 'utf8'
 RTT_BACKLOG = 5
 RTT_RECV_SIZE = 512
-RTT_CERT_FILE = './server.pem'
-RTT_CERT_KEY = './server.key'
-RTT_CA_FILE = './ca.pem'
-RTT_DB_NAME = ''
-RTT_DB_USER = ''
-RTT_DB_PASS = ''
-RTT_WRITE_ALLOWED_EMAILS = ['x@x.xe']
+RTT_HOST = os.environ['RTT_HOST']
+RTT_PORT = int(os.environ['RTT_PORT'])
+RTT_CERT_FILE = os.environ['RTT_CERT_FILE']
+RTT_CERT_KEY = os.environ['RTT_CERT_KEY']
+RTT_CA_FILE = os.environ['RTT_CA_FILE']
+RTT_DB_NAME = os.environ['RTT_DB_NAME']
+RTT_DB_USER = os.environ['RTT_DB_USER']
+RTT_DB_PASS = os.environ['RTT_DB_PASS']
+RTT_WRITE_ALLOWED_EMAILS = os.environ['RTT_WRITE_ALLOWED_EMAILS'].split(',')
 RTT_RE_VENDOR = re.compile('-[a-z0-9]+\.+torrent$', re.I)
 RTT_RE_VEN_END = re.compile('\.+torrent$', re.I)
 RTT_RE_EPISODE = re.compile('(\.S[0-9]{2}E[0-9]{2}\.)|(\.S[0-9]{2}E[0-9]{2}-E?[0-9]{2}\.)', re.I)
@@ -49,10 +50,10 @@ def get_details(t):
         ep_idx = episode.find('-')
         if ep_idx >= 0:
             episodes = [episode[:ep_idx]]
-            if episode[ep_idx+1].lower() == 'e':
-                episodes.append(episode[ep_idx+2:])
+            if episode[ep_idx + 1].lower() == 'e':
+                episodes.append(episode[ep_idx + 2:])
             else:
-                episodes.append(episode[ep_idx+1:])
+                episodes.append(episode[ep_idx + 1:])
         else:
             episodes = [episode]
     return (vendor, season, episodes)
@@ -125,7 +126,7 @@ def process_request(data, write_auth):
     keys = req.keys()
     if 'jsonrpc' in keys and req['jsonrpc'] == '2.0' and 'method' in keys and 'id' in keys:
         method = req['method']
-        if 'list' == method  and 'params' in keys:
+        if 'list' == method and 'params' in keys:
             if 'limit' in req['params'].keys():
                 try:
                     limit = int(req['params']['limit'])
@@ -167,12 +168,7 @@ def handle_client(ssl_client):
     write_auth = is_write_authorized(ssl_client)
     total_data = bytes()
     log('handle_client')
-    #ssl_client.settimeout(1)
-    try:
-        data = ssl_client.recv(RTT_RECV_SIZE)
-    except:
-        log('hc timeout1')
-        return True
+    data = ssl_client.recv(RTT_RECV_SIZE)
     data_len = len(data)
     while data is not None and data_len > 0:
         total_data += data
@@ -182,10 +178,7 @@ def handle_client(ssl_client):
             ssl_client.sendall(response.encode(RTT_ENCODING))
             log('client handled with response')
             break
-        try:
-            data = ssl_client.recv(RTT_RECV_SIZE)
-        except:
-            log('hc timeout2')
+        data = ssl_client.recv(RTT_RECV_SIZE)
         data_len = len(data)
     log('client end')
     return data_len < 1
@@ -193,7 +186,7 @@ def handle_client(ssl_client):
 
 def is_write_authorized(ssl_client):
     cert = ssl_client.getpeercert()
-    log(cert)
+    # log(cert)
     if cert is not None and 'subject' in cert.keys():
         for pair in cert['subject']:
             if len(pair) > 0:
@@ -206,14 +199,14 @@ def is_write_authorized(ssl_client):
 def clean_clients(old_clients):
     clients = []
     for c in old_clients:
-        if c.fileno() > 2:
+        if c is not None and c.fileno() > 2:
             clients.append(c)
         else:
             log('removing client: ' + str(c))
     return clients
 
 
-def run():
+def main():
     sock_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock_server.bind((RTT_HOST, RTT_PORT))
@@ -244,7 +237,7 @@ def run():
                 global RTT_notify_d
                 if RTT_notify_d is not None:
                     for c in clients:
-                        log('sendin n to: ' +str(c))
+                        log('sendin n to: ' + str(c))
                         c.sendall(RTT_notify_d.encode(RTT_ENCODING))
                     RTT_notify_d = None
         for fd_error in fds_error:
@@ -254,4 +247,5 @@ def run():
                 fd_error.close()
 
 
-run()
+if __name__ == '__main__':
+    main()

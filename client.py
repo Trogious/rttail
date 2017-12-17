@@ -6,17 +6,20 @@ import re
 import sys
 import os
 import subprocess
+import time
 from threading import Thread, Lock
 
-RTT_HOST = '0.0.0.0'
-RTT_PORT = 13014
-RTT_RECV_SIZE = 4096
+
 RTT_ENCODING = 'utf8'
-RTT_CERT_FILE = './client.pem'
-RTT_CERT_KEY = './client.key'
+RTT_RECV_SIZE = 4096
+RTT_HOST = os.environ['RTT_HOST']
+RTT_PORT = int(os.environ['RTT_PORT'])
+RTT_CERT_FILE = os.environ['RTT_CERT_FILE']
+RTT_CERT_KEY = os.environ['RTT_CERT_KEY']
+RTT_CHDIR = os.environ['RTT_CHDIR']
 RTT_stderr_lock = Lock()
 RTT_stderr = sys.stderr
-RTT_chdir = '/home/user/'
+
 
 class Downloader(Thread):
     def __init__(self, entries):
@@ -28,7 +31,7 @@ class Downloader(Thread):
             cmd = ['xd.sh', "'" + entry['entry'] + "'"]
             log(cmd)
             try:
-                os.chdir(RTT_chdir)
+                os.chdir(RTT_CHDIR)
                 subprocess.call(cmd)
             except Exception as e:
                 log(e)
@@ -66,8 +69,8 @@ def process_response(data):
     if hdr_end_idx >= 0:
         content_len_idx = data.find('Content-Length: ')
         if content_len_idx >= 0:
-            content_length = int(data[content_len_idx+16:hdr_end_idx])
-        data = data[hdr_end_idx+4:]
+            content_length = int(data[content_len_idx + 16:hdr_end_idx])
+        data = data[hdr_end_idx + 4:]
     try:
         req = json.loads(data)
     except Exception as e:
@@ -119,7 +122,7 @@ def method_notify_d(ssl_socket):
     ssl_socket.sendall(('{"jsonrpc": "2.0", "method": "notify_d", "id": 1}').encode(RTT_ENCODING))
 
 
-def run():
+def main():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         s.connect((RTT_HOST, RTT_PORT))
@@ -138,10 +141,13 @@ def run():
         return
     if is_daemon():
         method_subscribe(ssl_socket)
+        time.sleep(1)
+        main()
     elif is_notify_d():
         method_notify_d(ssl_socket)
     else:
         method_list(ssl_socket, get_limit())
 
 
-run()
+if __name__ == '__main__':
+    main()
