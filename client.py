@@ -167,6 +167,10 @@ def main():
         log('conn refused: ' + e.strerror)
         s.close()
         return
+    except Exception as e:
+        log(e)
+        s.close()
+        return
     if is_daemon():
         method_subscribe(ssl_socket)
     elif is_notify_d():
