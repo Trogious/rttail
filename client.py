@@ -18,6 +18,8 @@ RTT_CERT_FILE = os.environ['RTT_CERT_FILE']
 RTT_CERT_KEY = os.environ['RTT_CERT_KEY']
 RTT_CHDIR = os.environ['RTT_CHDIR']
 RTT_LATEST_FILE = os.environ['RTT_LATEST_FILE']
+RTT_RE_ENQUOTE_CHARS = re.compile("[ &*#@$!\()^]")
+RTT_RE_ESCAPE_CHARS = ["'", '"']
 RTT_stderr_lock = Lock()
 RTT_stderr = sys.stderr
 
@@ -27,9 +29,17 @@ class Downloader(Thread):
         Thread.__init__(self)
         self.entries = entries
 
+    def escape(self, entry):
+        for ec in RTT_RE_ESCAPE_CHARS:
+            entry = entry.replace(ec, '\\'+ec)
+        if RTT_RE_ENQUOTE_CHARS.search(entry) is not None:
+            entry = "'" + entry + "'"
+        return entry
+
     def run(self):
         for entry in self.entries:
-            cmd = ['xd.sh', "'" + entry['entry'] + "'"]
+            entry = self.escape(entry['entry'])
+            cmd = ['xd.sh', entry]
             log(cmd)
             try:
                 os.chdir(RTT_CHDIR)
