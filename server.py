@@ -31,6 +31,10 @@ RTT_stderr = sys.stderr
 RTT_notify_d = None
 
 
+def is_purge():
+    return len(sys.argv) == 2 and sys.argv[1] == '--purge'
+
+
 def log(log_item):
     with RTT_stderr_lock:
         RTT_stderr.write(str(log_item) + '\n')
@@ -90,6 +94,18 @@ def get_from_queue(from_tstamp):
     c.close()
     conn.close()
     return torrents
+
+
+def purge():
+    conn = psycopg2.connect('dbname=' + RTT_DB_NAME + ' user=' + RTT_DB_USER + ' password=' + RTT_DB_PASS)
+    c = conn.cursor()
+    try:
+        c.execute('DELETE FROM downloaded_queue')
+        conn.commit()
+    except Exception as e:
+        log(e)
+    c.close()
+    conn.close()
 
 
 def get_json_response(result, request_id):
@@ -261,4 +277,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    if is_purge():
+        purge()
+    else:
+        main()
