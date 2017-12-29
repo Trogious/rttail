@@ -42,11 +42,13 @@ def log(log_item):
 
 
 def get_client_log_str(client):
-    if client is not None and 'fd' in client:
-        if 'raddr' in client and len(client['raddr']) > 0:
-            return '(' + str(client['fd']) + ',r ' + client['raddr'][0] + ')'
-        elif 'laddr' in client and len(client['laddr']) > 0:
-            return '(' + str(client['fd']) + ',l ' + client['laddr'][0] + ')'
+    if client is not None:
+        log_str = '(' + str(client.fileno()) + ','
+        try:
+            log_str += 'r ' + client.getpeername()[0]
+        except:
+            log_str += 'l ' + client.getsockname()[0]
+        return log_str + ')'
     return str(client)
 
 
@@ -254,7 +256,7 @@ def main():
         log('select loop')
         clients = clean_clients(clients)
         fds_read, fds_write, fds_error = select.select([sock_server] + clients, [sock_server], [sock_server] + clients)
-        log(fds_read)
+        log([get_client_log_str(fd) for fd in fds_read])
         log(fds_write)
         log(fds_error)
         if sock_server in fds_read:
