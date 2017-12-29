@@ -41,6 +41,15 @@ def log(log_item):
         RTT_stderr.flush()
 
 
+def get_client_log_str(client):
+    if client is not None and 'fd' in client:
+        if 'raddr' in client and len(client['raddr']) > 0:
+            return '(' + str(client['fd']) + ',r ' + client['raddr'][0] + ')'
+        elif 'laddr' in client and len(client['laddr']) > 0:
+            return '(' + str(client['fd']) + ',l ' + client['laddr'][0] + ')'
+    return str(client)
+
+
 def get_details(t):
     vendor = season = episodes = None
     m = RTT_RE_VENDOR.search(t)
@@ -231,7 +240,7 @@ def clean_clients(old_clients):
         if c is not None and c.fileno() > 2:
             clients.append(c)
         else:
-            log('removing client: ' + str(c))
+            log('removing client: ' + get_client_log_str(c))
     return clients
 
 
@@ -251,7 +260,7 @@ def main():
         if sock_server in fds_read:
             log('sock_server in fds_read')
             client, address = sock_server.accept()
-            log('accepted: ' + str(address))
+            log('accepted: ' + get_client_log_str(client))
             clients.append(get_ssl_client(client))
         elif sock_server in fds_write:
             log('sock_server in fds_write')
@@ -261,17 +270,18 @@ def main():
         for fd_read in fds_read:
             if fd_read in clients:
                 if handle_client(fd_read):
-                    log('removing due to close: ' + str(fd_read))
+                    log('removing due to close: ' + get_client_log_str(fd_read))
                     clients.remove(fd_read)
                 global RTT_notify_d
                 if RTT_notify_d is not None:
                     for c in clients:
-                        log('sending n to: ' + str(c))
-                        c.sendall(RTT_notify_d.encode(RTT_ENCODING))
+                        if c is not fd_read:
+                            log('sending n to: ' + get_client_log_str(c))
+                            c.sendall(RTT_notify_d.encode(RTT_ENCODING))
                     RTT_notify_d = None
         for fd_error in fds_error:
             if fd_error in clients:
-                log('removing due to error: ' + str(fd_error))
+                log('removing due to error: ' + get_client_log_str(fd_error))
                 clients.remove(fd_error)
                 fd_error.close()
 
