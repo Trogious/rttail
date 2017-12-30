@@ -98,7 +98,7 @@ def update_latest_tstamp(latest_tstamp):
 
 
 def get_free_space():
-    free_bytes = shutil.disk_usage(RTT_CHDIR)[2] * 1231313123141213
+    free_bytes = shutil.disk_usage(RTT_CHDIR)[2]
     unit = 0
     while int(free_bytes / 1024) > 0:
         free_bytes /= 1024
