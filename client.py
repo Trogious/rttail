@@ -7,6 +7,7 @@ import sys
 import os
 import subprocess
 import time
+import shutil
 from threading import Thread, Lock
 
 
@@ -18,8 +19,10 @@ RTT_CERT_FILE = os.environ['RTT_CERT_FILE']
 RTT_CERT_KEY = os.environ['RTT_CERT_KEY']
 RTT_CHDIR = os.environ['RTT_CHDIR']
 RTT_LATEST_FILE = os.environ['RTT_LATEST_FILE']
-RTT_RE_ENQUOTE_CHARS = re.compile("[ &*#@$!\()^]")
+RTT_RE_ENQUOTE_CHARS = re.compile("[ ;&*#@$!\()^]")
 RTT_RE_ESCAPE_CHARS = ["'", '"']
+RTT_UNITS = ['K', 'B', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y']
+RTT_UNITS_LEN = len(RTT_UNITS)
 RTT_stderr_lock = Lock()
 RTT_stderr = sys.stderr
 
@@ -31,7 +34,7 @@ class Downloader(Thread):
 
     def escape(self, entry):
         for ec in RTT_RE_ESCAPE_CHARS:
-            entry = entry.replace(ec, '\\'+ec)
+            entry = entry.replace(ec, '\\' + ec)
         if RTT_RE_ENQUOTE_CHARS.search(entry) is not None:
             entry = "'" + entry + "'"
         return entry
@@ -54,6 +57,10 @@ def is_daemon():
 
 def is_notify_d():
     return len(sys.argv) == 2 and sys.argv[1] == '-n'
+
+
+def is_request_space_report():
+    return len(sys.argv) == 2 and sys.argv[1] == '-r'
 
 
 def get_limit():
@@ -90,7 +97,20 @@ def update_latest_tstamp(latest_tstamp):
         log(e)
 
 
-def process_response(data):
+def get_free_space():
+    free_bytes = shutil.disk_usage(RTT_CHDIR)[2] * 1231313123141213
+    unit = 0
+    while int(free_bytes / 1024) > 0:
+        free_bytes /= 1024
+        unit += 1
+    if unit < RTT_UNITS_LEN:
+        unit_str = RTT_UNITS[unit]
+    else:
+        unit_str = 'UNKNOWN'
+    return (int(free_bytes), unit_str)
+
+
+def process_response(data, ssl_socket=None):
     content_length = None
     data = data.decode(RTT_ENCODING)
     # log(data)
@@ -106,23 +126,30 @@ def process_response(data):
         log(e)
         return None
     keys = req.keys()
-    if 'jsonrpc' in keys and req['jsonrpc'] == '2.0' and 'result' in keys and 'id' in keys:
-        result = req['result']
-        if 'torrents' in result.keys():
-            for t in result['torrents']:
-                log(str(t['id']) + ' ' + t['torrent'])
-        elif 'notify_d' in result.keys():
-            log(result['notify_d'])
-            latest_tstamp = get_latest_tstamp()
-            new_notifications = []
-            for n in result['notify_d']:
-                tstamp = int(n['downloaded_at'])
-                if tstamp > latest_tstamp:
-                    new_notifications.append(n)
-                    latest_tstamp = tstamp
-            update_latest_tstamp(latest_tstamp)
-            if len(new_notifications) > 0:
-                Downloader(new_notifications).start()
+    if 'jsonrpc' in keys and req['jsonrpc'] == '2.0' and 'id' in keys:
+        if 'result' in keys:
+            result = req['result']
+            res_keys = result.keys()
+            if 'torrents' in res_keys:
+                for t in result['torrents']:
+                    log(str(t['id']) + ' ' + t['torrent'])
+            elif 'notify_d' in res_keys:
+                log(result['notify_d'])
+                latest_tstamp = get_latest_tstamp()
+                new_notifications = []
+                for n in result['notify_d']:
+                    tstamp = int(n['downloaded_at'])
+                    if tstamp > latest_tstamp:
+                        new_notifications.append(n)
+                        latest_tstamp = tstamp
+                update_latest_tstamp(latest_tstamp)
+                if len(new_notifications) > 0:
+                    Downloader(new_notifications).start()
+        elif 'method' in keys:
+            if 'report_space' == req['method']:
+                free_space = get_free_space()
+                log('report_space: ' + str(free_space))
+                ssl_socket.sendall(('{"jsonrpc": "2.0", "method": "space_report", "params": {"space": ' + str(free_space[0]) + ', "unit": "' + free_space[1] + '"}, "id": ' + str(req['id']) + '}').encode(RTT_ENCODING))
     return content_length
 
 
@@ -148,7 +175,7 @@ def method_subscribe(ssl_socket):
     data = ssl_socket.recv(RTT_RECV_SIZE)
     while data is not None and len(data) > 0:
         total_data += data
-        c_len = process_response(total_data)
+        c_len = process_response(total_data, ssl_socket)
         if c_len is not None:
             content_len = c_len
         if content_len is not None and len(total_data) >= content_len:
@@ -158,6 +185,10 @@ def method_subscribe(ssl_socket):
 
 def method_notify_d(ssl_socket):
     ssl_socket.sendall(('{"jsonrpc": "2.0", "method": "notify_d", "id": 1}').encode(RTT_ENCODING))
+
+
+def method_request_space_report(ssl_socket):
+    ssl_socket.sendall(('{"jsonrpc": "2.0", "method": "request_space_report", "id": 1}').encode(RTT_ENCODING))
 
 
 def main():
@@ -181,10 +212,12 @@ def main():
         log(e)
         s.close()
         return
-    if is_daemon():
-        method_subscribe(ssl_socket)
-    elif is_notify_d():
+    if is_notify_d():
         method_notify_d(ssl_socket)
+    elif is_request_space_report():
+        method_request_space_report(ssl_socket)
+    elif is_daemon():
+        method_subscribe(ssl_socket)
     else:
         method_list(ssl_socket, get_limit())
 

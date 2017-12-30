@@ -29,6 +29,7 @@ RTT_RE_EPISODE = re.compile('(\.S[0-9]{2}E[0-9]{2}\.)|(\.S[0-9]{2}E[0-9]{2}-E?[0
 RTT_stderr_lock = Lock()
 RTT_stderr = sys.stderr
 RTT_notify_d = None
+RTT_request_space_report = None
 
 
 def is_purge():
@@ -79,44 +80,56 @@ def get_details(t):
     return (vendor, season, episodes)
 
 
+def db_connect():
+    conn = None
+    try:
+        conn = psycopg2.connect('dbname=' + RTT_DB_NAME + ' user=' + RTT_DB_USER + ' password=' + RTT_DB_PASS)
+    except Exception as e:
+        log(e)
+    return conn
+
+
 def get_torrents(n_limit):
-    conn = psycopg2.connect('dbname=' + RTT_DB_NAME + ' user=' + RTT_DB_USER + ' password=' + RTT_DB_PASS)
-    c = conn.cursor()
-    c.execute('SELECT torrent,id FROM torrent ORDER BY id DESC LIMIT %s', (n_limit,))
     torrents = []
-    for t in c.fetchall()[::-1]:
-        d = get_details(t[0])
-        torrents.append({'id': t[1], 'torrent': t[0], 'vendor': d[0], 'season': d[1], 'episodes': d[2]})
-    c.close()
-    conn.close()
+    conn = db_connect()
+    if conn is not None:
+        c = conn.cursor()
+        c.execute('SELECT torrent,id FROM torrent ORDER BY id DESC LIMIT %s', (n_limit,))
+        for t in c.fetchall()[::-1]:
+            d = get_details(t[0])
+            torrents.append({'id': t[1], 'torrent': t[0], 'vendor': d[0], 'season': d[1], 'episodes': d[2]})
+        c.close()
+        conn.close()
     return torrents
 
 
 def get_from_queue(from_tstamp):
-    conn = psycopg2.connect('dbname=' + RTT_DB_NAME + ' user=' + RTT_DB_USER + ' password=' + RTT_DB_PASS)
-    c = conn.cursor()
-    c.execute('SELECT torrent,downloaded_at FROM downloaded_queue ORDER BY id')
-    # WHERE CAST(EXTRACT(epoch FROM downloaded_at) AS int) > %s
     torrents = []
-    for t in c.fetchall():
-        d = get_details(t[0])
-        dt = int(time.mktime(t[1].timetuple()))
-        torrents.append({'entry': t[0], 'downloaded_at': dt, 'vendor': d[0], 'season': d[1], 'episodes': d[2]})
-    c.close()
-    conn.close()
+    conn = db_connect()
+    if conn is not None:
+        c = conn.cursor()
+        c.execute('SELECT torrent,downloaded_at FROM downloaded_queue ORDER BY id')
+        # WHERE CAST(EXTRACT(epoch FROM downloaded_at) AS int) > %s
+        for t in c.fetchall():
+            d = get_details(t[0])
+            dt = int(time.mktime(t[1].timetuple()))
+            torrents.append({'entry': t[0], 'downloaded_at': dt, 'vendor': d[0], 'season': d[1], 'episodes': d[2]})
+        c.close()
+        conn.close()
     return torrents
 
 
 def purge():
-    conn = psycopg2.connect('dbname=' + RTT_DB_NAME + ' user=' + RTT_DB_USER + ' password=' + RTT_DB_PASS)
-    c = conn.cursor()
-    try:
-        c.execute('DELETE FROM downloaded_queue')
-        conn.commit()
-    except Exception as e:
-        log(e)
-    c.close()
-    conn.close()
+    conn = db_connect()
+    if conn is not None:
+        c = conn.cursor()
+        try:
+            c.execute('DELETE FROM downloaded_queue')
+            conn.commit()
+        except Exception as e:
+            log(e)
+        c.close()
+        conn.close()
 
 
 def get_json_response(result, request_id):
@@ -127,6 +140,14 @@ def get_json_response(result, request_id):
     return json_obj
 
 
+def get_json_request(method, request_id):
+    json_obj = {}
+    json_obj['jsonrpc'] = '2.0'
+    json_obj['id'] = request_id
+    json_obj['method'] = method
+    return json_obj
+
+
 def get_json_response_list(n_limit, request_id):
     torrents = get_torrents(n_limit)
     return get_json_response({'torrents': torrents}, request_id)
@@ -134,6 +155,11 @@ def get_json_response_list(n_limit, request_id):
 
 def get_json_response_notify_d(torrents, request_id):
     return get_json_response({'notify_d': torrents}, request_id)
+
+
+def get_json_request_report_space():
+    # ('{"jsonrpc": "2.0", "method": "report_space", "params": {"space": ' + str(free_space) + '}, "id": ' + str(req['id']) + '}').encode(RTT_ENCODING)
+    return get_json_request('report_space', 1)
 
 
 def get_json_response_subscribe(request_id):
@@ -169,6 +195,10 @@ def process_request(data, write_auth):
                 limit = 10
             response_json = get_json_response_list(limit, req['id'])
             fullContent = prepare_response(response_json)
+        elif 'space_report' == method and 'params' in keys:
+            if 'space' in req['params'].keys():
+                log('free space: ' + str(req['params']['space']) + req['params']['unit'])
+                fullContent = ''
         elif write_auth:
             if 'notify_d' == method:
                 log('notify_d')
@@ -176,6 +206,12 @@ def process_request(data, write_auth):
                 fullContent = ''
                 response_json = get_json_response_notify_d(get_from_queue(None), req['id'])
                 RTT_notify_d = prepare_response(response_json)
+            elif 'request_space_report' == method:
+                log('request_space_report')
+                global RTT_request_space_report
+                fullContent = ''
+                response_json = get_json_request_report_space()
+                RTT_request_space_report = prepare_response(response_json)
             elif 'subscribe' == method:
                 log('client subscribed')
                 response_json = get_json_response_subscribe(req['id'])
@@ -275,12 +311,19 @@ def main():
                     log('removing due to close: ' + get_client_log_str(fd_read))
                     clients.remove(fd_read)
                 global RTT_notify_d
+                global RTT_request_space_report
                 if RTT_notify_d is not None:
                     for c in clients:
                         if c is not fd_read:
                             log('sending n to: ' + get_client_log_str(c))
                             c.sendall(RTT_notify_d.encode(RTT_ENCODING))
                     RTT_notify_d = None
+                elif RTT_request_space_report is not None:
+                    for c in clients:
+                        if c is not fd_read:
+                            log('sending r to: ' + get_client_log_str(c))
+                            c.sendall(RTT_request_space_report.encode(RTT_ENCODING))
+                    RTT_request_space_report = None
         for fd_error in fds_error:
             if fd_error in clients:
                 log('removing due to error: ' + get_client_log_str(fd_error))
