@@ -8,6 +8,7 @@ import psycopg2
 import select
 import time
 import os
+import datetime
 from threading import Lock
 
 RTT_ENCODING = 'utf8'
@@ -38,7 +39,7 @@ def is_purge():
 
 def log(log_item):
     with RTT_stderr_lock:
-        RTT_stderr.write(str(log_item) + '\n')
+        RTT_stderr.write(datetime.datetime.now().isoformat(sep='T')[5:19] + ': ' + str(log_item) + '\n')
         RTT_stderr.flush()
 
 
