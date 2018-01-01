@@ -8,6 +8,7 @@ import os
 import subprocess
 import time
 import shutil
+import datetime
 from threading import Thread, Lock
 
 
@@ -21,7 +22,7 @@ RTT_CHDIR = os.environ['RTT_CHDIR']
 RTT_LATEST_FILE = os.environ['RTT_LATEST_FILE']
 RTT_RE_ENQUOTE_CHARS = re.compile("[ ;&*#@$!\()^]")
 RTT_RE_ESCAPE_CHARS = ["'", '"']
-RTT_UNITS = ['K', 'B', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y']
+RTT_UNITS = ['B', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y']
 RTT_UNITS_LEN = len(RTT_UNITS)
 RTT_stderr_lock = Lock()
 RTT_stderr = sys.stderr
@@ -63,11 +64,15 @@ def is_request_space_report():
     return len(sys.argv) == 2 and sys.argv[1] == '-r'
 
 
-def get_limit():
+def is_show_queue():
+    return len(sys.argv) > 1 and sys.argv[1] == '-q'
+
+
+def get_limit(pos=1):
     limit = 10
-    if len(sys.argv) > 1:
+    if len(sys.argv) > pos:
         try:
-            limit = int(sys.argv[1])
+            limit = int(sys.argv[pos])
         except:
             limit = 10
     return limit
@@ -132,7 +137,7 @@ def process_response(data, ssl_socket=None):
             res_keys = result.keys()
             if 'torrents' in res_keys:
                 for t in result['torrents']:
-                    log(str(t['id']) + ' ' + t['torrent'])
+                    print(str(t['id']) + ' ' + t['torrent'])
             elif 'notify_d' in res_keys:
                 log(result['notify_d'])
                 latest_tstamp = get_latest_tstamp()
@@ -145,6 +150,10 @@ def process_response(data, ssl_socket=None):
                 update_latest_tstamp(latest_tstamp)
                 if len(new_notifications) > 0:
                     Downloader(new_notifications).start()
+            elif 'queue' in res_keys:
+                for t in result['queue']:
+                    dt = datetime.datetime.fromtimestamp(t['downloaded_at'])
+                    print(str(t['file']) + ' ' + dt.isoformat(sep='_')[:19])
         elif 'method' in keys:
             if 'report_space' == req['method']:
                 free_space = get_free_space()
@@ -153,8 +162,8 @@ def process_response(data, ssl_socket=None):
     return content_length
 
 
-def method_list(ssl_socket, limit):
-    ssl_socket.sendall(('{"jsonrpc": "2.0", "method": "list", "params": {"limit": ' + str(limit) + '}, "id": 1}').encode(RTT_ENCODING))
+def method_with_limit(ssl_socket, method, limit):
+    ssl_socket.sendall(('{"jsonrpc": "2.0", "method": "' + method + '", "params": {"limit": ' + str(limit) + '}, "id": 1}').encode(RTT_ENCODING))
     data = ssl_socket.recv(RTT_RECV_SIZE)
     total_data = bytearray()
     content_len = None
@@ -216,10 +225,12 @@ def main():
         method_notify_d(ssl_socket)
     elif is_request_space_report():
         method_request_space_report(ssl_socket)
+    elif is_show_queue():
+        method_with_limit(ssl_socket, 'show_queue', get_limit(2))
     elif is_daemon():
         method_subscribe(ssl_socket)
     else:
-        method_list(ssl_socket, get_limit())
+        method_with_limit(ssl_socket, 'list', get_limit())
 
 
 if __name__ == '__main__':

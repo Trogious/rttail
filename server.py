@@ -39,7 +39,7 @@ def is_purge():
 
 def log(log_item):
     with RTT_stderr_lock:
-        RTT_stderr.write(datetime.datetime.now().isoformat(sep='T')[5:19] + ': ' + str(log_item) + '\n')
+        RTT_stderr.write(datetime.datetime.now().isoformat(sep='_')[5:19] + ': ' + str(log_item) + '\n')
         RTT_stderr.flush()
 
 
@@ -104,17 +104,30 @@ def get_torrents(n_limit):
     return torrents
 
 
-def get_from_queue(from_tstamp):
+def get_from_queue():
     torrents = []
     conn = db_connect()
     if conn is not None:
         c = conn.cursor()
         c.execute('SELECT torrent,downloaded_at FROM downloaded_queue ORDER BY id')
-        # WHERE CAST(EXTRACT(epoch FROM downloaded_at) AS int) > %s
+        # WHERE CAST(EXTRACT(EPOCH FROM downloaded_at) AS int) > %s
         for t in c.fetchall():
             d = get_details(t[0])
             dt = int(time.mktime(t[1].timetuple()))
             torrents.append({'entry': t[0], 'downloaded_at': dt, 'vendor': d[0], 'season': d[1], 'episodes': d[2]})
+        c.close()
+        conn.close()
+    return torrents
+
+
+def get_show_queue(n_limit):
+    torrents = []
+    conn = db_connect()
+    if conn is not None:
+        c = conn.cursor()
+        c.execute('SELECT torrent,CAST(EXTRACT(EPOCH FROM downloaded_at) AS int) FROM downloaded_queue ORDER BY id DESC LIMIT %s', (n_limit,))
+        for t in c.fetchall():
+            torrents.append({'file': t[0], 'downloaded_at': t[1]})
         c.close()
         conn.close()
     return torrents
@@ -154,6 +167,11 @@ def get_json_response_list(n_limit, request_id):
     return get_json_response({'torrents': torrents}, request_id)
 
 
+def get_json_response_show_queue(n_limit, request_id):
+    torrents = get_show_queue(n_limit)
+    return get_json_response({'queue': torrents}, request_id)
+
+
 def get_json_response_notify_d(torrents, request_id):
     return get_json_response({'notify_d': torrents}, request_id)
 
@@ -186,7 +204,7 @@ def process_request(data, write_auth):
     keys = req.keys()
     if 'jsonrpc' in keys and req['jsonrpc'] == '2.0' and 'method' in keys and 'id' in keys:
         method = req['method']
-        if 'list' == method and 'params' in keys:
+        if method in ['list', 'show_queue'] and 'params' in keys:
             if 'limit' in req['params'].keys():
                 try:
                     limit = int(req['params']['limit'])
@@ -194,7 +212,10 @@ def process_request(data, write_auth):
                     limit = 10
             else:
                 limit = 10
-            response_json = get_json_response_list(limit, req['id'])
+            if 'list' == method:
+                response_json = get_json_response_list(limit, req['id'])
+            else:
+                response_json = get_json_response_show_queue(limit, req['id'])
             fullContent = prepare_response(response_json)
         elif 'space_report' == method and 'params' in keys:
             if 'space' in req['params'].keys():
@@ -205,7 +226,7 @@ def process_request(data, write_auth):
                 log('notify_d')
                 global RTT_notify_d
                 fullContent = ''
-                response_json = get_json_response_notify_d(get_from_queue(None), req['id'])
+                response_json = get_json_response_notify_d(get_from_queue(), req['id'])
                 RTT_notify_d = prepare_response(response_json)
             elif 'request_space_report' == method:
                 log('request_space_report')
