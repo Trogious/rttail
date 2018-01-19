@@ -129,7 +129,7 @@ def process_response(data, ssl_socket=None):
         req = json.loads(data)
     except Exception as e:
         log(e)
-        return None
+        return content_length
     keys = req.keys()
     if 'jsonrpc' in keys and req['jsonrpc'] == '2.0' and 'id' in keys:
         if 'result' in keys:
