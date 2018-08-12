@@ -48,7 +48,7 @@ def get_client_log_str(client):
         log_str = '(' + str(client.fileno()) + ','
         try:
             log_str += 'r ' + client.getpeername()[0]
-        except:
+        except Exception:
             log_str += 'l ' + client.getsockname()[0]
         return log_str + ')'
     return str(client)

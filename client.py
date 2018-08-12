@@ -9,6 +9,7 @@ import subprocess
 import time
 import shutil
 import datetime
+import select
 from threading import Thread, Lock
 
 
@@ -24,6 +25,7 @@ RTT_RE_ENQUOTE_CHARS = re.compile("[ ;&*#@$!\()^]")
 RTT_RE_ESCAPE_CHARS = ["'", '"']
 RTT_UNITS = ['B', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y']
 RTT_UNITS_LEN = len(RTT_UNITS)
+RTT_SOCKET_TIMEOUT = 10
 RTT_stderr_lock = Lock()
 RTT_stderr = sys.stderr
 
@@ -73,7 +75,7 @@ def get_limit(pos=1):
     if len(sys.argv) > pos:
         try:
             limit = int(sys.argv[pos])
-        except:
+        except Exception:
             limit = 10
     return limit
 
@@ -179,17 +181,29 @@ def method_with_limit(ssl_socket, method, limit):
 
 def method_subscribe(ssl_socket):
     ssl_socket.sendall(('{"jsonrpc": "2.0", "method": "subscribe", "id": 1}').encode(RTT_ENCODING))
-    total_data = bytearray()
-    content_len = None
-    data = ssl_socket.recv(RTT_RECV_SIZE)
-    while data is not None and len(data) > 0:
-        total_data += data
-        c_len = process_response(total_data, ssl_socket)
-        if c_len is not None:
-            content_len = c_len
-        if content_len is not None and len(total_data) >= content_len:
+    while True:
+        fds_read, fds_write, fds_error = select.select([ssl_socket], [], [ssl_socket], RTT_SOCKET_TIMEOUT)
+        if ssl_socket in fds_read:
             total_data = bytearray()
-        data = ssl_socket.recv(RTT_RECV_SIZE)
+            content_len = None
+            data = ssl_socket.recv(RTT_RECV_SIZE)
+            if len(data) < 1:
+                log('connection closed')
+                break
+            while data is not None and len(data) > 0:
+                total_data += data
+                c_len = process_response(total_data, ssl_socket)
+                if c_len is not None:
+                    content_len = c_len
+                if content_len is not None and len(total_data) >= content_len:
+                    break
+                data = ssl_socket.recv(RTT_RECV_SIZE)
+        elif ssl_socket in fds_error:
+            log('fds_error')
+            break
+        elif len(fds_read + fds_error) > 0:
+            log('unknown error')
+            break
 
 
 def method_notify_d(ssl_socket):
@@ -237,5 +251,6 @@ if __name__ == '__main__':
     main()
     if is_daemon():
         while True:
-            time.sleep(60)
+            log('waiting')
+            time.sleep(RTT_SOCKET_TIMEOUT)
             main()
