@@ -25,7 +25,7 @@ RTT_RE_ENQUOTE_CHARS = re.compile("[ ;&*#@$!\()^]")
 RTT_RE_ESCAPE_CHARS = ["'", '"']
 RTT_UNITS = ['B', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y']
 RTT_UNITS_LEN = len(RTT_UNITS)
-RTT_SOCKET_TIMEOUT = 10
+RTT_SOCKET_TIMEOUT = 60
 RTT_stderr_lock = Lock()
 RTT_stderr = sys.stderr
 
