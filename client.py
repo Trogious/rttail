@@ -8,6 +8,7 @@ import os
 import subprocess
 import time
 import shutil
+import signal
 import datetime
 import select
 from threading import Thread, Lock
@@ -21,6 +22,7 @@ RTT_CERT_FILE = os.environ['RTT_CERT_FILE']
 RTT_CERT_KEY = os.environ['RTT_CERT_KEY']
 RTT_CHDIR = os.environ['RTT_CHDIR']
 RTT_LATEST_FILE = os.environ['RTT_LATEST_FILE']
+RTT_PID_PATH = os.environ['RTT_PID_PATH']
 RTT_RE_ENQUOTE_CHARS = re.compile("[ ;&*#@$!\()^]")
 RTT_RE_ESCAPE_CHARS = ["'", '"']
 RTT_UNITS = ['B', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y']
@@ -28,6 +30,7 @@ RTT_UNITS_LEN = len(RTT_UNITS)
 RTT_SOCKET_TIMEOUT = 60
 RTT_stderr_lock = Lock()
 RTT_stderr = sys.stderr
+RTT_running = True
 
 
 class Downloader(Thread):
@@ -68,6 +71,48 @@ def is_request_space_report():
 
 def is_show_queue():
     return len(sys.argv) > 1 and sys.argv[1] == '-q'
+
+
+def createPid():
+    try:
+        with open(RTT_PID_PATH, 'w') as f:
+            f.write(str(os.getpid()))
+            f.flush()
+    except Exception as e:
+        log(e)
+        log('cannot create PID file: ' + RTT_PID_PATH)
+
+
+def deletePid():
+    try:
+        os.remove(RTT_PID_PATH)
+    except Exception as e:
+        log(e)
+        log('removing PID file failed: ' + RTT_PID_PATH)
+
+
+def daemonize():
+    # logFileError = JMTLog.writeLogsError()
+    # if logFileError:
+    #     print('cannot open log file: ' + str(logFileError))
+    #     sys.exit(EXIT_LOG)
+    pid = os.fork()
+    if pid > 0:
+        sys.exit(0)
+    elif pid < 0:
+        log('fork failed: ' + str(pid))
+        sys.exit(1)
+    os.chdir('/')
+    os.setsid()
+    os.umask(0)
+    sys.stdin.close()
+    sys.stdout.close()
+    sys.stderr.close()
+
+
+def handleSignal(signum, stack):
+    global RTT_running
+    RTT_running = False
 
 
 def get_limit(pos=1):
@@ -181,7 +226,7 @@ def method_with_limit(ssl_socket, method, limit):
 
 def method_subscribe(ssl_socket):
     ssl_socket.sendall(('{"jsonrpc": "2.0", "method": "subscribe", "id": 1}').encode(RTT_ENCODING))
-    while True:
+    while RTT_running:
         fds_read, fds_write, fds_error = select.select([ssl_socket], [], [ssl_socket], RTT_SOCKET_TIMEOUT)
         if ssl_socket in fds_read:
             total_data = bytearray()
@@ -248,9 +293,15 @@ def main():
 
 
 if __name__ == '__main__':
+    createPid()
+    signal.signal(signal.SIGUSR1, handleSignal)
+    signal.signal(signal.SIGINT, handleSignal)
+    signal.signal(signal.SIGTERM, handleSignal)
+    log('PID: ' + str(os.getpid()))
     main()
     if is_daemon():
-        while True:
+        while RTT_running:
             log('waiting')
             time.sleep(RTT_SOCKET_TIMEOUT)
             main()
+    deletePid()
