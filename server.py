@@ -280,6 +280,8 @@ def handle_client(ssl_client):
         except Exception as e:
             log(e)
         data_len = len(data)
+        if data_len == 1 and data == b' ':
+            data = None
     log('client end')
     return data_len < 1
 
