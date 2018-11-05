@@ -245,6 +245,12 @@ def method_subscribe(ssl_socket):
         elif len(fds_read + fds_error) > 0:
             log('unknown error')
             break
+        if len(fds_read) < 1:
+            ssl_socket.sendall((' ').encode(RTT_ENCODING))
+            so_err = ssl_socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+            if so_err != 0:
+                log('socket error: %d' % so_err)
+                break
 
 
 def method_notify_d(ssl_socket):

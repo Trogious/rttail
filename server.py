@@ -258,7 +258,7 @@ def get_ssl_client(client):
 def handle_client(ssl_client):
     write_auth = is_write_authorized(ssl_client)
     total_data = bytes()
-    log('handle_client')
+    # log('handle_client')
     try:
         data = ssl_client.recv(RTT_RECV_SIZE)
     except Exception as e:
@@ -282,7 +282,7 @@ def handle_client(ssl_client):
         data_len = len(data)
         if data_len == 1 and data == b' ':
             data = None
-    log('client end')
+    # log('client end')
     return data_len < 1
 
 
