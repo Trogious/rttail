@@ -265,6 +265,8 @@ def handle_client(ssl_client):
         log(e)
         return True
     data_len = len(data)
+    if data_len == 1 and data == b' ':
+        data = None
     while data is not None and data_len > 0:
         total_data += data
         response = process_request(total_data, write_auth)
