@@ -48,7 +48,7 @@ class Downloader(Thread):
     def run(self):
         for entry in self.entries:
             entry = self.escape(entry['entry'])
-            cmd = ['xd.sh', entry]
+            cmd = ['txd.sh', entry]
             log(cmd)
             try:
                 os.chdir(RTT_CHDIR)
@@ -92,10 +92,6 @@ def deletePid():
 
 
 def daemonize():
-    # logFileError = JMTLog.writeLogsError()
-    # if logFileError:
-    #     print('cannot open log file: ' + str(logFileError))
-    #     sys.exit(EXIT_LOG)
     pid = os.fork()
     if pid > 0:
         sys.exit(0)
