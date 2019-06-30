@@ -361,4 +361,9 @@ if __name__ == '__main__':
     if is_purge():
         purge()
     else:
-        main()
+        while True:
+            try:
+                main()
+            except Exception as e:
+                log(e)
+            time.sleep(60)
