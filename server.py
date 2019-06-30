@@ -199,7 +199,7 @@ def process_request(data, write_auth):
     # log(data)
     try:
         req = json.loads(data)
-    except:
+    except Exception:
         return None
     keys = req.keys()
     if 'jsonrpc' in keys and req['jsonrpc'] == '2.0' and 'method' in keys and 'id' in keys:
@@ -256,10 +256,10 @@ def get_ssl_client(client):
 
 
 def handle_client(ssl_client):
-    write_auth = is_write_authorized(ssl_client)
     total_data = bytes()
     # log('handle_client')
     try:
+        write_auth = is_write_authorized(ssl_client)
         data = ssl_client.recv(RTT_RECV_SIZE)
     except Exception as e:
         log(e)
