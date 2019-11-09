@@ -1,15 +1,17 @@
 #!/usr/local/bin/python3
+import datetime
 import json
+import os
+import re
+import select
 import socket
 import ssl
-import re
+import subprocess
 import sys
-import psycopg2
-import select
 import time
-import os
-import datetime
 from threading import Lock
+
+import psycopg2
 
 RTT_ENCODING = 'utf8'
 RTT_BACKLOG = 5
@@ -23,6 +25,8 @@ RTT_DB_NAME = os.environ['RTT_DB_NAME']
 RTT_DB_USER = os.environ['RTT_DB_USER']
 RTT_DB_PASS = os.environ['RTT_DB_PASS']
 RTT_WRITE_ALLOWED_EMAILS = os.environ['RTT_WRITE_ALLOWED_EMAILS'].split(',')
+RTT_NOTIFY_CMD = os.getenv('RTT_NOTIFY_CMD')
+RTT_NOTIFY_ARGS = os.getenv('RTT_NOTIFY_ARGS', '').split(':')
 RTT_RE_VENDOR = re.compile('-[a-z0-9]+\.+torrent$', re.I)
 RTT_RE_VEN_END = re.compile('\.+torrent$', re.I)
 RTT_RE_VENDOR2 = re.compile('-[a-z0-9]+$', re.I)
@@ -35,6 +39,10 @@ RTT_request_space_report = None
 
 def is_purge():
     return len(sys.argv) == 2 and sys.argv[1] == '--purge'
+
+
+def is_queue():
+    return len(sys.argv) > 2 and sys.argv[1] == '-q'
 
 
 def log(log_item):
@@ -146,6 +154,17 @@ def purge():
         conn.close()
 
 
+def add_to_queue(torrent):
+    conn = psycopg2.connect('dbname=' + RTT_DB_NAME + ' user=' + RTT_DB_USER + ' password=' + RTT_DB_PASS)
+    c = conn.cursor()
+    c.execute('INSERT INTO downloaded_queue (torrent) VALUES(%s)', (torrent,))
+    c.close()
+    conn.commit()
+    conn.close()
+    if RTT_NOTIFY_CMD:
+        subprocess.call([RTT_NOTIFY_CMD, RTT_NOTIFY_ARGS])
+
+
 def get_json_response(result, request_id):
     json_obj = {}
     json_obj['jsonrpc'] = '2.0'
@@ -208,7 +227,7 @@ def process_request(data, write_auth):
             if 'limit' in req['params'].keys():
                 try:
                     limit = int(req['params']['limit'])
-                except:
+                except Exception:
                     limit = 10
             else:
                 limit = 10
@@ -243,7 +262,8 @@ def process_request(data, write_auth):
 
 def get_ssl_client(client):
     try:
-        ssl_client = ssl.wrap_socket(client, server_side=True, certfile=RTT_CERT_FILE, keyfile=RTT_CERT_KEY, ssl_version=ssl.PROTOCOL_TLSv1_2, cert_reqs=ssl.CERT_REQUIRED, ca_certs=RTT_CA_FILE)
+        ssl_client = ssl.wrap_socket(client, server_side=True, certfile=RTT_CERT_FILE, keyfile=RTT_CERT_KEY,
+                                     ssl_version=ssl.PROTOCOL_TLSv1_2, cert_reqs=ssl.CERT_REQUIRED, ca_certs=RTT_CA_FILE)
     except ssl.SSLError as e:
         log('no client cert: ' + e.strerror)
         client.close()
@@ -360,6 +380,8 @@ def main():
 if __name__ == '__main__':
     if is_purge():
         purge()
+    elif is_queue():
+        add_to_queue(sys.argv[2])
     else:
         while True:
             try:
