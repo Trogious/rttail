@@ -383,6 +383,7 @@ if __name__ == '__main__':
     elif is_queue():
         add_to_queue(sys.argv[2])
     else:
+        log('PID: ' + str(os.getpid()))
         while True:
             try:
                 main()
