@@ -381,7 +381,7 @@ if __name__ == '__main__':
     if is_purge():
         purge()
     elif is_queue():
-        add_to_queue(sys.argv[2])
+        add_to_queue(' '.join(sys.argv[2:]))
     else:
         log('PID: ' + str(os.getpid()))
         while True:
