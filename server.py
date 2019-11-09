@@ -162,7 +162,7 @@ def add_to_queue(torrent):
     conn.commit()
     conn.close()
     if RTT_NOTIFY_CMD:
-        subprocess.call([RTT_NOTIFY_CMD, RTT_NOTIFY_ARGS])
+        subprocess.call([RTT_NOTIFY_CMD, *RTT_NOTIFY_ARGS])
 
 
 def get_json_response(result, request_id):
