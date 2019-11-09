@@ -11,4 +11,4 @@ RTT_DB_PASS='' \
 RTT_WRITE_ALLOWED_EMAILS='x@x.xe' \
 RTT_NOTIFY_CMD='' \
 RTT_NOTIFY_ARGS='' \
-python3 ./server.py
+python3 ./server.py $@
