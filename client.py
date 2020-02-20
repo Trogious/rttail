@@ -21,11 +21,12 @@ RTT_CERT_KEY = os.environ['RTT_CERT_KEY']
 RTT_CHDIR = os.environ['RTT_CHDIR']
 RTT_LATEST_FILE = os.environ['RTT_LATEST_FILE']
 RTT_PID_PATH = os.environ['RTT_PID_PATH']
+RTT_SOCKET_TIMEOUT = int(os.getenv('RTT_SOCKET_TIMEOUT', 60))
+RTT_DOWNLOAD_CMD = os.getenv('RTT_DOWNLOAD_CMD', 'txd.sh')
 RTT_RE_ENQUOTE_CHARS = re.compile("[ ;&*#@$!\\()^]")
 RTT_RE_ESCAPE_CHARS = ["'", '"']
 RTT_UNITS = ['B', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y']
 RTT_UNITS_LEN = len(RTT_UNITS)
-RTT_SOCKET_TIMEOUT = 60
 RTT_stderr_lock = Lock()
 RTT_stderr = sys.stderr
 RTT_running = True
@@ -46,7 +47,7 @@ class Downloader(Thread):
     def run(self):
         for entry in self.entries:
             entry = self.escape(entry['entry'])
-            cmd = ['txd.sh', entry]
+            cmd = [RTT_DOWNLOAD_CMD, entry]
             log(cmd)
             try:
                 os.chdir(RTT_CHDIR)
@@ -69,39 +70,6 @@ def is_request_space_report():
 
 def is_show_queue():
     return len(sys.argv) > 1 and sys.argv[1] == '-q'
-
-
-def createPid():
-    try:
-        with open(RTT_PID_PATH, 'w') as f:
-            f.write(str(os.getpid()))
-            f.flush()
-    except Exception as e:
-        log(e)
-        log('cannot create PID file: ' + RTT_PID_PATH)
-
-
-def deletePid():
-    try:
-        os.remove(RTT_PID_PATH)
-    except Exception as e:
-        log(e)
-        log('removing PID file failed: ' + RTT_PID_PATH)
-
-
-def daemonize():
-    pid = os.fork()
-    if pid > 0:
-        sys.exit(0)
-    elif pid < 0:
-        log('fork failed: ' + str(pid))
-        sys.exit(1)
-    os.chdir('/')
-    os.setsid()
-    os.umask(0)
-    sys.stdin.close()
-    sys.stdout.close()
-    sys.stderr.close()
 
 
 def handleSignal(signum, stack):
@@ -205,8 +173,8 @@ def process_response(data, ssl_socket=None):
 
 
 def method_with_limit(ssl_socket, method, limit):
-    ssl_socket.sendall(('{"jsonrpc": "2.0", "method": "' + method +
-                        '", "params": {"limit": ' + str(limit) + '}, "id": 1}').encode(RTT_ENCODING))
+    ssl_socket.sendall(('{"jsonrpc": "2.0", "method": "' + method
+                        + '", "params": {"limit": ' + str(limit) + '}, "id": 1}').encode(RTT_ENCODING))
     data = ssl_socket.recv(RTT_RECV_SIZE)
     total_data = bytearray()
     content_len = None
@@ -267,6 +235,16 @@ def main():
         s.connect((RTT_HOST, RTT_PORT))
         ssl_socket = ssl.wrap_socket(s, server_side=False, certfile=RTT_CERT_FILE,
                                      keyfile=RTT_CERT_KEY, ssl_version=ssl.PROTOCOL_TLSv1_2)
+        if is_notify_d():
+            method_notify_d(ssl_socket)
+        elif is_request_space_report():
+            method_request_space_report(ssl_socket)
+        elif is_show_queue():
+            method_with_limit(ssl_socket, 'show_queue', get_limit(2))
+        elif is_daemon():
+            method_subscribe(ssl_socket)
+        else:
+            method_with_limit(ssl_socket, 'list', get_limit())
     except ssl.SSLError as e:
         log('no client cert: ' + e.strerror)
         s.close()
@@ -283,16 +261,6 @@ def main():
         log(e)
         s.close()
         return
-    if is_notify_d():
-        method_notify_d(ssl_socket)
-    elif is_request_space_report():
-        method_request_space_report(ssl_socket)
-    elif is_show_queue():
-        method_with_limit(ssl_socket, 'show_queue', get_limit(2))
-    elif is_daemon():
-        method_subscribe(ssl_socket)
-    else:
-        method_with_limit(ssl_socket, 'list', get_limit())
 
 
 if __name__ == '__main__':
