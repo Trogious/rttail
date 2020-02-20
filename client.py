@@ -1,4 +1,3 @@
-#!/usr/local/bin/python3
 import datetime
 import json
 import os
@@ -165,7 +164,7 @@ def process_response(data, ssl_socket=None):
     if hdr_end_idx >= 0:
         content_len_idx = data.find('Content-Length: ')
         if content_len_idx >= 0:
-            content_length = int(data[content_len_idx + 16:hdr_end_idx])
+            content_length = int(data[content_len_idx + 16:hdr_end_idx]) + hdr_end_idx + 4
         data = data[hdr_end_idx + 4:]
     try:
         req = json.loads(data)

@@ -11,7 +11,7 @@ RTT_CHDIR='.' \
 RTT_LATEST_FILE='./latest.txt' \
 RTT_PID_PATH='./pid'
 if [ $# -eq 1 -a x"$1" = x"-n" ]; then
-  echo notify; $PYTHON $CLIENT $@ &
+  $PYTHON $CLIENT $@ &
 else
   $PYTHON $CLIENT $@
 fi

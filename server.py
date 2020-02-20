@@ -1,4 +1,3 @@
-#!/usr/local/bin/python3
 import datetime
 import json
 import os
@@ -6,6 +5,7 @@ import re
 import select
 import socket
 import ssl
+import subprocess
 import sys
 import time
 from threading import Lock
@@ -24,6 +24,8 @@ RTT_DB_NAME = os.environ['RTT_DB_NAME']
 RTT_DB_USER = os.environ['RTT_DB_USER']
 RTT_DB_PASS = os.environ['RTT_DB_PASS']
 RTT_WRITE_ALLOWED_EMAILS = os.environ['RTT_WRITE_ALLOWED_EMAILS'].split(',')
+RTT_NOTIFY_CMD = os.getenv('RTT_NOTIFY_CMD')
+RTT_NOTIFY_ARGS = os.getenv('RTT_NOTIFY_ARGS', '').split(':')
 RTT_RE_VENDOR = re.compile('-[a-z0-9]+\.+torrent$', re.I)
 RTT_RE_VEN_END = re.compile('\.+torrent$', re.I)
 RTT_RE_VENDOR2 = re.compile('-[a-z0-9]+$', re.I)
@@ -36,6 +38,10 @@ RTT_request_space_report = None
 
 def is_purge():
     return len(sys.argv) == 2 and sys.argv[1] == '--purge'
+
+
+def is_queue():
+    return len(sys.argv) > 2 and sys.argv[1] == '-q'
 
 
 def log(log_item):
@@ -145,6 +151,17 @@ def purge():
             log(e)
         c.close()
         conn.close()
+
+
+def add_to_queue(torrent):
+    conn = psycopg2.connect('dbname=' + RTT_DB_NAME + ' user=' + RTT_DB_USER + ' password=' + RTT_DB_PASS)
+    c = conn.cursor()
+    c.execute('INSERT INTO downloaded_queue (torrent) VALUES(%s)', (torrent,))
+    c.close()
+    conn.commit()
+    conn.close()
+    if RTT_NOTIFY_CMD:
+        subprocess.call([RTT_NOTIFY_CMD, *RTT_NOTIFY_ARGS])
 
 
 def get_json_response(result, request_id):
@@ -268,10 +285,10 @@ def get_ssl_client(client):
 
 
 def handle_client(ssl_client):
-    write_auth = is_write_authorized(ssl_client)
     total_data = bytes()
     # log('handle_client')
     try:
+        write_auth = is_write_authorized(ssl_client)
         data = ssl_client.recv(RTT_RECV_SIZE)
     except Exception as e:
         log(e)
@@ -372,5 +389,13 @@ def main():
 if __name__ == '__main__':
     if is_purge():
         purge()
+    elif is_queue():
+        add_to_queue(' '.join(sys.argv[2:]))
     else:
-        main()
+        log('PID: ' + str(os.getpid()))
+        while True:
+            try:
+                main()
+            except Exception as e:
+                log(e)
+            time.sleep(60)
