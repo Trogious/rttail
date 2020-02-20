@@ -1,18 +1,17 @@
 #!/usr/local/bin/python3
+import datetime
 import json
-import socket
-import ssl
-import re
-import sys
 import os
-import subprocess
-import time
+import re
+import select
 import shutil
 import signal
-import datetime
-import select
-from threading import Thread, Lock
-
+import socket
+import ssl
+import subprocess
+import sys
+import time
+from threading import Lock, Thread
 
 RTT_ENCODING = 'utf8'
 RTT_RECV_SIZE = 4096
@@ -133,7 +132,7 @@ def get_latest_tstamp():
         with open(RTT_LATEST_FILE, 'rb') as f:
             latest_tstamp = int(f.read().decode(RTT_ENCODING))
     except Exception as e:
-            log(e)
+        log(e)
     return latest_tstamp
 
 
@@ -201,12 +200,14 @@ def process_response(data, ssl_socket=None):
             if 'report_space' == req['method']:
                 free_space = get_free_space()
                 log('report_space: ' + str(free_space))
-                ssl_socket.sendall(('{"jsonrpc": "2.0", "method": "space_report", "params": {"space": ' + str(free_space[0]) + ', "unit": "' + free_space[1] + '"}, "id": ' + str(req['id']) + '}').encode(RTT_ENCODING))
+                ssl_socket.sendall(('{"jsonrpc": "2.0", "method": "space_report", "params": {"space": ' + str(
+                    free_space[0]) + ', "unit": "' + free_space[1] + '"}, "id": ' + str(req['id']) + '}').encode(RTT_ENCODING))
     return content_length
 
 
 def method_with_limit(ssl_socket, method, limit):
-    ssl_socket.sendall(('{"jsonrpc": "2.0", "method": "' + method + '", "params": {"limit": ' + str(limit) + '}, "id": 1}').encode(RTT_ENCODING))
+    ssl_socket.sendall(('{"jsonrpc": "2.0", "method": "' + method +
+                        '", "params": {"limit": ' + str(limit) + '}, "id": 1}').encode(RTT_ENCODING))
     data = ssl_socket.recv(RTT_RECV_SIZE)
     total_data = bytearray()
     content_len = None
@@ -265,7 +266,8 @@ def main():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         s.connect((RTT_HOST, RTT_PORT))
-        ssl_socket = ssl.wrap_socket(s, server_side=False, certfile=RTT_CERT_FILE, keyfile=RTT_CERT_KEY, ssl_version=ssl.PROTOCOL_TLSv1_2)
+        ssl_socket = ssl.wrap_socket(s, server_side=False, certfile=RTT_CERT_FILE,
+                                     keyfile=RTT_CERT_KEY, ssl_version=ssl.PROTOCOL_TLSv1_2)
     except ssl.SSLError as e:
         log('no client cert: ' + e.strerror)
         s.close()
@@ -295,15 +297,12 @@ def main():
 
 
 if __name__ == '__main__':
-    createPid()
     signal.signal(signal.SIGUSR1, handleSignal)
     signal.signal(signal.SIGINT, handleSignal)
     signal.signal(signal.SIGTERM, handleSignal)
-    log('PID: ' + str(os.getpid()))
     main()
     if is_daemon():
         while RTT_running:
             log('waiting')
             time.sleep(RTT_SOCKET_TIMEOUT)
             main()
-    deletePid()

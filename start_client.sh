@@ -1,9 +1,17 @@
 #!/bin/sh -
-/usr/bin/env \
+PYTHON=python3
+CLIENT=./client.py
+export \
 RTT_HOST='0.0.0.0' \
 RTT_PORT=13013 \
 RTT_CERT_FILE='./client.pem' \
 RTT_CERT_KEY='./client.key' \
 RTT_CA_FILE='./ca.pem' \
-RTT_CHDIR='/home/user/' \
-python3 ./client.py $@
+RTT_CHDIR='.' \
+RTT_LATEST_FILE='./latest.txt' \
+RTT_PID_PATH='./pid'
+if [ $# -eq 1 -a x"$1" = x"-n" ]; then
+  echo notify; $PYTHON $CLIENT $@ &
+else
+  $PYTHON $CLIENT $@
+fi

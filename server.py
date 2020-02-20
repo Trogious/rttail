@@ -1,15 +1,16 @@
 #!/usr/local/bin/python3
+import datetime
 import json
+import os
+import re
+import select
 import socket
 import ssl
-import re
 import sys
-import psycopg2
-import select
 import time
-import os
-import datetime
 from threading import Lock
+
+import psycopg2
 
 RTT_ENCODING = 'utf8'
 RTT_BACKLOG = 5
@@ -199,7 +200,7 @@ def process_request(data, write_auth):
     # log(data)
     try:
         req = json.loads(data)
-    except:
+    except Exception:
         return None
     keys = req.keys()
     if 'jsonrpc' in keys and req['jsonrpc'] == '2.0' and 'method' in keys and 'id' in keys:
@@ -208,7 +209,7 @@ def process_request(data, write_auth):
             if 'limit' in req['params'].keys():
                 try:
                     limit = int(req['params']['limit'])
-                except:
+                except Exception:
                     limit = 10
             else:
                 limit = 10
@@ -242,16 +243,27 @@ def process_request(data, write_auth):
 
 
 def get_ssl_client(client):
+    ssl_client = None
+    failed = True
+    time_out = client.gettimeout()
+    client.settimeout(5)
     try:
-        ssl_client = ssl.wrap_socket(client, server_side=True, certfile=RTT_CERT_FILE, keyfile=RTT_CERT_KEY, ssl_version=ssl.PROTOCOL_TLSv1_2, cert_reqs=ssl.CERT_REQUIRED, ca_certs=RTT_CA_FILE)
+        ssl_client = ssl.wrap_socket(client, server_side=True, certfile=RTT_CERT_FILE, keyfile=RTT_CERT_KEY,
+                                     ssl_version=ssl.PROTOCOL_TLSv1_2, cert_reqs=ssl.CERT_REQUIRED, ca_certs=RTT_CA_FILE)
+        failed = False
     except ssl.SSLError as e:
         log('no client cert: ' + e.strerror)
-        client.close()
-        return None
     except ConnectionResetError as e:
         log('conn reset: ' + e.strerror)
+    except OSError as e:
+        if e.errno != 0:
+            log(e)
+    except Exception as e:
+        log(e)
+    if failed or ssl_client is None:
         client.close()
-        return None
+    else:
+        ssl_client.settimeout(time_out)
     return ssl_client
 
 
