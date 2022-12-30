@@ -239,7 +239,7 @@ def process_request(data, write_auth):
             if 'space' in req['params'].keys():
                 log('free space: ' + str(req['params']['space']) + req['params']['unit'])
                 fullContent = ''
-        elif write_auth:
+        elif write_auth: # if false this will cause a deadlock when responding to a client in handle_client on: data = ssl_client.recv(RTT_RECV_SIZE)
             if 'notify_d' == method:
                 log('notify_d')
                 global RTT_notify_d
